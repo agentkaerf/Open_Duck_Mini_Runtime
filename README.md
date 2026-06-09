@@ -46,7 +46,15 @@ source /usr/share/virtualenvwrapper/virtualenvwrapper.sh
 
 `sudo raspi-config` -> `Interface Options` -> `I2C`
 
-TODO set 400KHz ?
+Set the I2C bus to 400 kHz
+
+```bash
+sudo nano /boot/firmware/config.txt
+# copy the following line to /boot/firmware/config.txt
+dtparam=i2c_arm_baudrate=400000
+```
+
+Reboot for settings to take effect
 
 ### Set the usbserial latency timer
 
