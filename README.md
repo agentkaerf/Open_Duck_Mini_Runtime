@@ -179,12 +179,15 @@ Download the [latest policy checkpoint ](https://github.com/apirrone/Open_Duck_M
 
 
 
-```
-- The commands are : 
-- A to pause/unpause
-- X to turn on/off the projector
-- B to play a random sound
-- Y to turn on/off head control (very experimental, I don't recommend trying that, it can break your duck's head)
-- left and right triggers to control the left and right antennas
-- LB (new!) press and hold to increase the walking frequency, kind of a sprint mode 🙂
-```
+| Control | Action |
+|---|---|
+| Left stick | Linear velocity (forward/back, strafe) |
+| Right stick X | Angular (yaw) velocity |
+| A | Pause / unpause |
+| B | Play a random sound |
+| X | Toggle projector |
+| Y | Toggle head control mode (left stick controls head joints instead of body velocity. EXPERIMENTAL - can break your head!) |
+| LB (hold) | Sprint — increases gait frequency |
+| D-pad up / down | Increase / decrease base gait cadence |
+| Left trigger | Right antenna position |
+| Right trigger | Left antenna position |

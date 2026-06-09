@@ -216,5 +216,18 @@ if __name__ == "__main__":
     controller = XBoxController(20)
 
     while True:
-        print(controller.get_last_command())
+        commands, buttons, left_trigger, right_trigger = controller.get_last_command()
+        lin_x, lin_y, ang = commands[0], commands[1], commands[2]
+
+        for name, btn in vars(buttons).items():
+            if btn.triggered:
+                print(f"[{name}] pressed")
+
+        if abs(lin_x) > 0.01 or abs(lin_y) > 0.01 or abs(ang) > 0.01:
+            print(f"left stick: x={lin_x:.2f} y={lin_y:.2f}  right stick: yaw={ang:.2f}")
+        if left_trigger > 0.01:
+            print(f"left trigger: {left_trigger:.2f}")
+        if right_trigger > 0.01:
+            print(f"right trigger: {right_trigger:.2f}")
+
         time.sleep(0.05)
