@@ -61,8 +61,12 @@ class Imu:
             if raw_quat is None:
                 continue
 
+            q = np.array(raw_quat)
+            if np.linalg.norm(q) < 1e-6:
+                continue
+
             # Apply coordinate frame remap: q_new = q_remap * q_raw * q_remap_inv
-            raw_rot = R.from_quat(np.array(raw_quat))
+            raw_rot = R.from_quat(q)
             remapped_rot = self._rot_remap * raw_rot * self._rot_remap.inv()
 
             euler = remapped_rot.as_euler("xyz")
@@ -96,6 +100,6 @@ if __name__ == "__main__":
     imu = Imu(50, upside_down=False)
     while True:
         data = imu.get_data(euler=True)
-        print("euler (xyz)", np.around(data, 3))
-        print("---")
+        if data is not None:
+            print("euler (xyz)", np.around(data, 3))
         time.sleep(1 / 25)
