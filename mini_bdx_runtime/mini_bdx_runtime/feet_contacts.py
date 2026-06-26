@@ -28,7 +28,8 @@ if __name__ == "__main__":
     feet_contacts = FeetContacts()
     try:
         while True:
-            print(feet_contacts.get())
+            contact = feet_contacts.get()
+            print({"left": contact[0], "right": contact[1]})
             time.sleep(0.05)
     finally:
         feet_contacts.stop()
