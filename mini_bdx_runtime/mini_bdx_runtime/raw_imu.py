@@ -16,11 +16,8 @@ class Imu:
         self.sampling_freq = sampling_freq
         self.upside_down = upside_down
 
-        i2c = busio.I2C(board.SCL, board.SDA, frequency=400000)
-        self.imu = BNO08X_I2C(i2c)
-
-        self.imu.enable_feature(BNO_REPORT_ACCELEROMETER)
-        self.imu.enable_feature(BNO_REPORT_GYROSCOPE)
+        self.i2c = busio.I2C(board.SCL, board.SDA, frequency=400000)
+        self._init_imu()
 
         if calibrate:
             print("BNO085 calibrates automatically in the background.")
@@ -34,6 +31,31 @@ class Imu:
         }
         self.imu_queue = Queue(maxsize=1)
         Thread(target=self.imu_worker, daemon=True).start()
+
+    def _init_imu(self, retries=10):
+        """Initialize the BNO085 and enable features.
+
+        The BNO08x is flaky over I2C (clock-stretching issues on the Pi), so
+        enabling features can fail intermittently. Retry a full re-init until
+        both features enable cleanly.
+        """
+        last_err = None
+        for attempt in range(retries):
+            try:
+                self.imu = BNO08X_I2C(self.i2c)
+                # Give the chip a moment to finish booting after (re)init.
+                time.sleep(0.5)
+                self.imu.enable_feature(BNO_REPORT_ACCELEROMETER)
+                self.imu.enable_feature(BNO_REPORT_GYROSCOPE)
+                return
+            except Exception as e:
+                last_err = e
+                print(f"[IMU]: init attempt {attempt + 1}/{retries} failed: {e}")
+                time.sleep(0.5)
+
+        raise RuntimeError(
+            f"Failed to initialize BNO085 after {retries} attempts"
+        ) from last_err
 
     def _remap_vector(self, v):
         # Replicates BNO055 axis_remap: swap X/Y then negate based on orientation
