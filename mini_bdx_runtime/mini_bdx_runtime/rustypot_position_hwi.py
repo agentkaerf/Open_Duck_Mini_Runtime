@@ -121,8 +121,9 @@ class HWI:
             for joint, position in joints_positions.items()
         }
 
+        # Pair ids with their own positions so order/subsets don't matter.
         self.io.write_goal_position(
-            list(self.joints.values()), list(ids_positions.values())
+            list(ids_positions.keys()), list(ids_positions.values())
         )
 
     def get_present_positions(self, ignore=[]):
