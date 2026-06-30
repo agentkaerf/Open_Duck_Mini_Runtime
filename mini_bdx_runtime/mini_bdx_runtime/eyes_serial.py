@@ -1,6 +1,4 @@
-import random
-import time
-from threading import Thread, Event, Lock
+from threading import Lock
 
 import serial
 
@@ -13,39 +11,39 @@ CMD_BLINK = "blink"
 CMD_STOP = "stop"
 CMD_WINK_LEFT = "wink_left"
 CMD_WINK_RIGHT = "wink_right"
+CMD_SET = "set"
+
+SIDES = ("left", "right", "both")
 
 
 class Eyes:
     """Drives the eyes over a UART serial link instead of GPIO pins.
 
-    Mirrors the GPIO Eyes class: a background thread triggers random blinks by
-    sending the "blink" command. The other commands ("wink_left", "wink_right",
-    "stop") can be sent on demand.
+    The microcontroller owns the blink loop: sending "blink <min> <max>
+    <duration>" starts autonomous random blinking, and "stop" halts it. The
+    other commands ("wink_left", "wink_right", "set ...") are sent on demand.
     """
 
     def __init__(
         self,
         port=SERIAL_PORT,
         baudrate=BAUDRATE,
+        blink_duration=0.1,
         min_interval=1.0,
         max_interval=4.0,
         autostart=True,
     ):
         self.serial = serial.Serial(port, baudrate, timeout=1)
 
+        self.blink_duration = blink_duration
         self.min_interval = min_interval
         self.max_interval = max_interval
 
-        # Serializes writes between the blink thread and on-demand calls.
+        # Serializes writes between concurrent callers.
         self._write_lock = Lock()
 
-        self._stop_event = Event()
-        # The auto-blink thread is optional so callers (e.g. the interactive
-        # test mode) can drive commands manually without random blinks.
-        self._thread = None
         if autostart:
-            self._thread = Thread(target=self.run, daemon=True)
-            self._thread.start()
+            self.blink()
 
     def _send(self, command):
         """Send a newline-terminated command over the serial link."""
@@ -53,8 +51,15 @@ class Eyes:
             self.serial.write((command + "\n").encode("utf-8"))
             self.serial.flush()
 
-    def blink(self):
-        self._send(CMD_BLINK)
+    def blink(self, min_interval=None, max_interval=None, duration=None):
+        """Start the MCU's autonomous blink loop.
+
+        Defaults to the instance's intervals/duration when args are omitted.
+        """
+        min_interval = self.min_interval if min_interval is None else min_interval
+        max_interval = self.max_interval if max_interval is None else max_interval
+        duration = self.blink_duration if duration is None else duration
+        self._send(f"{CMD_BLINK} {min_interval} {max_interval} {duration}")
 
     def wink_left(self):
         self._send(CMD_WINK_LEFT)
@@ -62,20 +67,16 @@ class Eyes:
     def wink_right(self):
         self._send(CMD_WINK_RIGHT)
 
-    def run(self):
-        try:
-            while not self._stop_event.is_set():
-                self.blink()
-                next_blink = random.uniform(self.min_interval, self.max_interval)
-                time.sleep(next_blink)
-        except Exception as err:
-            print(f"Error in eye thread: {err}")
-            self._stop_event.set()
+    def set_color(self, side, r, g, b, w, brightness=None):
+        """Set an eye's color: "set <left|right|both> R G B W [brightness]"."""
+        if side not in SIDES:
+            raise ValueError(f"side must be one of {SIDES}, got {side!r}")
+        command = f"{CMD_SET} {side} {r} {g} {b} {w}"
+        if brightness is not None:
+            command += f" {brightness}"
+        self._send(command)
 
     def stop(self):
-        self._stop_event.set()
-        if self._thread is not None:
-            self._thread.join()
         try:
             self._send(CMD_STOP)
         finally:
@@ -104,10 +105,11 @@ if __name__ == "__main__":
         }
 
         print(f"Connected to {port} @ {baudrate} baud.")
-        print(
-            "Type any command to send it verbatim. "
-            "Aliases: b=blink, l=wink_left, r=wink_right, s=stop. quit/q to exit."
-        )
+        print("Type any command to send it verbatim. Examples:")
+        print("  blink [min] [max] [duration]")
+        print("  wink_left | wink_right | stop")
+        print("  set <left|right|both> R G B W [brightness]")
+        print("Aliases: b=blink, l=wink_left, r=wink_right, s=stop. quit/q to exit.")
 
         try:
             while True:
