@@ -9,7 +9,6 @@ from mini_bdx_runtime.raw_imu import Imu
 from mini_bdx_runtime.poly_reference_motion import PolyReferenceMotion
 from mini_bdx_runtime.xbox_controller import XBoxController
 from mini_bdx_runtime.feet_contacts import FeetContacts
-from mini_bdx_runtime.eyes import Eyes
 from mini_bdx_runtime.sounds import Sounds
 from mini_bdx_runtime.antennas import Antennas
 from mini_bdx_runtime.projector import Projector
@@ -125,6 +124,10 @@ class RLWalk:
 
         # Optional expression features
         if self.duck_config.eyes:
+            if self.duck_config.eyes_serial:
+                from mini_bdx_runtime.eyes_serial import Eyes
+            else:
+                from mini_bdx_runtime.eyes import Eyes
             self.eyes = Eyes()
         if self.duck_config.projector:
             self.projector = Projector()

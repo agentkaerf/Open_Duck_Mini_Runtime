@@ -55,6 +55,8 @@ class DuckConfig:
         expression_features = self.json_config.get("expression_features", {})
 
         self.eyes = expression_features.get("eyes", False)
+        # Drive the eyes over UART serial instead of GPIO pins.
+        self.eyes_serial = expression_features.get("eyes_serial", False)
         self.projector = expression_features.get("projector", False)
         self.antennas = expression_features.get("antennas", False)
         self.speaker = expression_features.get("speaker", False)
