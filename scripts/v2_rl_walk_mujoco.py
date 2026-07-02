@@ -11,7 +11,6 @@ from mini_bdx_runtime.xbox_controller import XBoxController
 from mini_bdx_runtime.feet_contacts import FeetContacts
 from mini_bdx_runtime.sounds import Sounds
 from mini_bdx_runtime.antennas import Antennas
-from mini_bdx_runtime.projector import Projector
 from mini_bdx_runtime.rl_utils import make_action_dict, LowPassActionFilter
 from mini_bdx_runtime.duck_config import DuckConfig
 
@@ -130,7 +129,16 @@ class RLWalk:
                 from mini_bdx_runtime.eyes import Eyes
             self.eyes = Eyes()
         if self.duck_config.projector:
-            self.projector = Projector()
+            if self.duck_config.projector_serial:
+                from mini_bdx_runtime.projector_serial import Projector
+
+                self.projector = Projector(
+                    brightness=self.duck_config.projector_brightness
+                )
+            else:
+                from mini_bdx_runtime.projector import Projector
+
+                self.projector = Projector()
         if self.duck_config.speaker:
             self.sounds = Sounds(
                 volume=1.0, sound_directory="../mini_bdx_runtime/assets/"

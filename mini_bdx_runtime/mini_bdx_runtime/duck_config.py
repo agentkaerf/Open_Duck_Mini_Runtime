@@ -7,6 +7,18 @@ HOME_DIR = os.path.expanduser("~")
 
 class DuckConfig:
 
+    @staticmethod
+    def _feature_config(features, key):
+        """Return a feature's config as a dict.
+
+        Accepts the nested form ({"enable": ..., ...}) and, for backward
+        compatibility, a plain bool (treated as {"enable": <bool>}).
+        """
+        value = features.get(key, {})
+        if isinstance(value, bool):
+            return {"enable": value}
+        return value if isinstance(value, dict) else {}
+
     def __init__(
         self,
         config_json_path: Optional[str] = f"{HOME_DIR}/duck_config.json",
@@ -54,10 +66,20 @@ class DuckConfig:
 
         expression_features = self.json_config.get("expression_features", {})
 
-        self.eyes = expression_features.get("eyes", False)
+        # eyes and projector are nested sub-settings, e.g.
+        #   "eyes": {"enable": false, "serial": false}
+        #   "projector": {"enable": false, "serial": false, "brightness": 50}
+        eyes_cfg = self._feature_config(expression_features, "eyes")
+        self.eyes = eyes_cfg.get("enable", False)
         # Drive the eyes over UART serial instead of GPIO pins.
-        self.eyes_serial = expression_features.get("eyes_serial", False)
-        self.projector = expression_features.get("projector", False)
+        self.eyes_serial = eyes_cfg.get("serial", False)
+
+        projector_cfg = self._feature_config(expression_features, "projector")
+        self.projector = projector_cfg.get("enable", False)
+        # Drive the projector over UART serial instead of GPIO pins.
+        self.projector_serial = projector_cfg.get("serial", False)
+        self.projector_brightness = projector_cfg.get("brightness", 50)
+
         self.antennas = expression_features.get("antennas", False)
         self.speaker = expression_features.get("speaker", False)
         self.microphone = expression_features.get("microphone", False)
