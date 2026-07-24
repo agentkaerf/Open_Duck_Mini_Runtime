@@ -80,7 +80,6 @@ def main():
 
     # Iterate joints in the HWI's canonical order (dict preserves order).
     joint_order = list(hwi.joints.keys())
-    motor_ids = list(hwi.joints.values())
     valid = set(joint_order)
     unknown = [j for j in target if j not in valid]
     if unknown:
@@ -109,7 +108,7 @@ def main():
     # so the robot firms up in place. (A low->high gain ramp would let the limp
     # joints droop under gravity and then snap back when stiffened.)
     hwi.set_position_all(start)
-    hwi.io.set_kps(motor_ids, hwi.kps)
+    hwi.set_kps(hwi.kps)
 
     # Smoothly interpolate from the current pose to the target pose.
     steps = max(1, int(args.duration * args.freq))

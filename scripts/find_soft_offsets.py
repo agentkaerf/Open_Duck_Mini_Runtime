@@ -44,7 +44,7 @@ try:
             if current_pos is None:
                 continue
             # hwi.control.kps[i] = 0
-            hwi.io.disable_torque([joint_id])
+            hwi.disable_torque([joint_id])
             input(
                 f"{joint_name} is now turned off. Move it to the desired zero position and press any key to confirm the offset"
             )
@@ -57,7 +57,7 @@ try:
             )
             hwi.set_position_all(hwi.zero_pos)
             time.sleep(0.5)
-            hwi.io.enable_torque([joint_id])
+            hwi.enable_torque([joint_id])
             # hwi.control.kps[i] = 32
             res = input("Is that ok ? (Y/n)").lower()
             if res == "y" or res == "":

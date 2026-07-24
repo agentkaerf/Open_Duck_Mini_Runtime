@@ -117,9 +117,33 @@ class HWI:
         print("turn on : high kps")
 
     def turn_off(self):
-        self.io.sync_write_torque_enable(
-            list(self.joints.values()), [False] * len(self.joints)
-        )
+        self.disable_torque()
+
+    def enable_torque(self, ids=None):
+        """Enable torque on the given servo ids (all joints if ids is None)."""
+        if ids is None:
+            ids = list(self.joints.values())
+        self.io.sync_write_torque_enable(ids, [True] * len(ids))
+
+    def disable_torque(self, ids=None):
+        """Disable torque on the given servo ids (all joints if ids is None)."""
+        if ids is None:
+            ids = list(self.joints.values())
+        self.io.sync_write_torque_enable(ids, [False] * len(ids))
+
+    def read_present_position(self, ids):
+        """
+        Raw present position for the given servo ids, in radians.
+        Unlike get_present_positions(), no joint offsets are applied.
+        """
+        return self.io.sync_read_present_position(ids)
+
+    def write_goal_position(self, ids, positions):
+        """
+        Raw goal position write for the given servo ids.
+        Unlike set_position()/set_position_all(), no joint offsets are applied.
+        """
+        self.io.sync_write_goal_position(ids, positions)
 
     def set_position(self, joint_name, pos):
         """

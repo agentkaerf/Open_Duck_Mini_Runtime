@@ -33,7 +33,7 @@ def main():
     for joint_name, joint_id in hwi.joints.items():
         try:
             print(f"Setting low torque for motor '{joint_name}' (ID: {joint_id})...")
-            hwi.io.set_kps([joint_id], [hwi.low_torque_kps[0]])
+            hwi.set_kp(joint_id, hwi.low_torque_kps[0])
             print(f"✓ Low torque set successfully for motor '{joint_name}' (ID: {joint_id}).")
         except Exception as e:
             print(f"✗ Error setting low torque for motor '{joint_name}' (ID: {joint_id}): {e}")
@@ -52,7 +52,7 @@ def main():
         print(f"Attempting to read position from motor '{joint_name}' (ID: {joint_id})...")
         try:
             # Try to read the position to check if motor is responsive
-            position = hwi.io.read_present_position([joint_id])
+            position = hwi.read_present_position([joint_id])
             print(f"✓ Motor '{joint_name}' (ID: {joint_id}) is responsive. Position: {position[0]:.3f}")
         except Exception as e:
             print(f"✗ Error accessing motor '{joint_name}' (ID: {joint_id}): {e}")
@@ -70,7 +70,7 @@ def main():
                 for joint_name, joint_id in hwi.joints.items():
                     if (joint_name, joint_id) not in unresponsive_motors:
                         try:
-                            hwi.io.disable_torque([joint_id])
+                            hwi.disable_torque([joint_id])
                             print(f"Disabled torque for motor '{joint_name}' (ID: {joint_id})")
                         except:
                             pass
@@ -103,7 +103,7 @@ def main():
         try:
             # Get current position
             print(f"Reading current position from motor '{joint_name}' (ID: {joint_id})...")
-            current_position = hwi.io.read_present_position([joint_id])[0]
+            current_position = hwi.read_present_position([joint_id])[0]
             print(f"Current position: {current_position:.3f}")
             
             # Calculate test position (move by 0.1 radians)
@@ -111,17 +111,17 @@ def main():
             
             # Move to test position
             print(f"Moving motor '{joint_name}' (ID: {joint_id}) to test position: {test_position:.3f}...")
-            hwi.io.write_goal_position([joint_id], [test_position])
+            hwi.write_goal_position([joint_id], [test_position])
             time.sleep(1)  # Wait for movement
             
             # Read new position
             print(f"Reading new position from motor '{joint_name}' (ID: {joint_id})...")
-            new_position = hwi.io.read_present_position([joint_id])[0]
+            new_position = hwi.read_present_position([joint_id])[0]
             print(f"New position: {new_position:.3f}")
             
             # Return to original position
             print(f"Returning motor '{joint_name}' (ID: {joint_id}) to original position...")
-            hwi.io.write_goal_position([joint_id], [current_position])
+            hwi.write_goal_position([joint_id], [current_position])
             time.sleep(1)  # Wait for movement
             
             # No confirmation question, just assume success
@@ -140,7 +140,7 @@ def main():
             
         try:
             print(f"Disabling torque for motor '{joint_name}' (ID: {joint_id})...")
-            hwi.io.disable_torque([joint_id])
+            hwi.disable_torque([joint_id])
             print(f"✓ Motor '{joint_name}' (ID: {joint_id}) turned off successfully.")
         except Exception as e:
             print(f"✗ Error turning off motor '{joint_name}' (ID: {joint_id}): {e}")
@@ -159,7 +159,7 @@ if __name__ == "__main__":
             for joint_name, joint_id in hwi.joints.items():
                 try:
                     print(f"Turning off motor '{joint_name}' (ID: {joint_id})...")
-                    hwi.io.disable_torque([joint_id])
+                    hwi.disable_torque([joint_id])
                     print(f"✓ Motor '{joint_name}' (ID: {joint_id}) turned off successfully.")
                 except Exception as e:
                     print(f"✗ Error turning off motor '{joint_name}' (ID: {joint_id}): {e}")
