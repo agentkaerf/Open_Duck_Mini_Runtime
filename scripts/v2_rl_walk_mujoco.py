@@ -35,12 +35,16 @@ class RLWalk:
         save_obs=False,
         replay_obs=None,
         cutoff_frequency=None,
+        print_current=False,
     ):
 
         self.duck_config = DuckConfig(config_json_path=duck_config_path)
 
         self.commands = commands
         self.pitch_bias = pitch_bias
+
+        self.print_current = print_current
+        self.last_current_print_t = 0
 
         self.onnx_model_path = onnx_model_path
         self.policy = OnnxInfer(self.onnx_model_path, awd=True)
@@ -205,6 +209,15 @@ class RLWalk:
                 left_trigger = 0
                 right_trigger = 0
                 t = time.time()
+
+                if self.print_current and t - self.last_current_print_t >= 1:
+                    currents = self.hwi.get_present_currents()
+                    if currents is not None:
+                        print(
+                            "Present currents (mA):",
+                            dict(zip(self.hwi.joints.keys(), currents)),
+                        )
+                    self.last_current_print_t = t
 
                 if self.commands:
                     self.last_commands, self.buttons, left_trigger, right_trigger = (
@@ -379,6 +392,12 @@ if __name__ == "__main__":
         help="replay the observations from a previous run (can be from the robot or from mujoco)",
     )
     parser.add_argument("--cutoff_frequency", type=float, default=None)
+    parser.add_argument(
+        "--print_current",
+        action="store_true",
+        default=False,
+        help="print each joint's present current (mA) to the console once per second",
+    )
 
     args = parser.parse_args()
     pid = [args.p, args.i, args.d]
@@ -395,6 +414,7 @@ if __name__ == "__main__":
         save_obs=args.save_obs,
         replay_obs=args.replay_obs,
         cutoff_frequency=args.cutoff_frequency,
+        print_current=args.print_current,
     )
     print("Done instantiating RLWalk")
     rl_walk.run()
