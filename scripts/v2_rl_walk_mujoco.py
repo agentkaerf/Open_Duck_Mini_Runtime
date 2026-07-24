@@ -240,6 +240,22 @@ class RLWalk:
 
         return freq
 
+    def print_currents(self, currents):
+        """Compact single-line current readout: total (A), peak servo, per-servo mA."""
+        joints = list(self.hwi.joints.keys())
+        total_ma = float(np.sum(currents))
+        peak_i = int(np.argmax(currents))
+
+        # Abbreviate joint names to their part-initials, e.g. left_hip_yaw -> lhy.
+        abbrevs = ["".join(part[0] for part in j.split("_")) for j in joints]
+        cells = [f"{a}:{c:.1f}" for a, c in zip(abbrevs, currents)]
+
+        print(
+            f"Current: total {total_ma / 1000.0:.3f} A, "
+            f"Peak {joints[peak_i]} {currents[peak_i]:.2f} mA. All (mA): "
+            f"{' '.join(cells)}"
+        )
+
     def run(self):
         i = 0
         try:
@@ -253,10 +269,7 @@ class RLWalk:
                 if self.print_current and t - self.last_current_print_t >= 1:
                     currents = self.hwi.get_present_currents()
                     if currents is not None:
-                        print(
-                            "Present currents (mA):",
-                            dict(zip(self.hwi.joints.keys(), currents)),
-                        )
+                        self.print_currents(currents)
                     self.last_current_print_t = t
 
                 if self.commands:
