@@ -9,10 +9,8 @@ from mini_bdx_runtime.raw_imu import Imu
 from mini_bdx_runtime.poly_reference_motion import PolyReferenceMotion
 from mini_bdx_runtime.xbox_controller import XBoxController
 from mini_bdx_runtime.feet_contacts import FeetContacts
-from mini_bdx_runtime.eyes import Eyes
 from mini_bdx_runtime.sounds import Sounds
 from mini_bdx_runtime.antennas import Antennas
-from mini_bdx_runtime.projector import Projector
 from mini_bdx_runtime.rl_utils import make_action_dict, LowPassActionFilter
 from mini_bdx_runtime.duck_config import DuckConfig
 
@@ -36,6 +34,7 @@ class RLWalk:
         replay_obs=None,
         cutoff_frequency=None,
         print_current=False,
+        head_mode="none",
     ):
 
         self.duck_config = DuckConfig(config_json_path=duck_config_path)
@@ -45,6 +44,20 @@ class RLWalk:
 
         self.print_current = print_current
         self.last_current_print_t = 0
+
+        # How head-control mode (toggled with the Y button) isolates the legs:
+        #   "none"     -> original behavior: gait keeps running and the manual head
+        #                 command is fed to the policy obs, so the legs still react
+        #   "freeze"   -> pause the gait and hold the leg pose; only the head moves
+        #   "decouple" -> keep the gait running but hide the manual head command from
+        #                 the policy observation so the legs don't react to the stick
+        #   "both"     -> freeze the gait AND hide the head command from the obs
+        self.head_mode = head_mode
+        # Snapshot of the leg targets captured when head mode is entered (for "freeze").
+        self.frozen_leg_targets = None
+        self.prev_freeze_active = False
+        # Leg joints = everything except the 4 head/neck joints at indices 5:9.
+        self.leg_indices = [0, 1, 2, 3, 4, 9, 10, 11, 12, 13]
 
         self.onnx_model_path = onnx_model_path
         self.policy = OnnxInfer(self.onnx_model_path, awd=True)
@@ -114,15 +127,35 @@ class RLWalk:
 
         # Optional expression features
         if self.duck_config.eyes:
+            if self.duck_config.eyes_serial:
+                from mini_bdx_runtime.eyes_serial import Eyes
+            else:
+                from mini_bdx_runtime.eyes import Eyes
             self.eyes = Eyes()
         if self.duck_config.projector:
-            self.projector = Projector()
+            if self.duck_config.projector_serial:
+                from mini_bdx_runtime.projector_serial import Projector
+
+                self.projector = Projector(
+                    brightness=self.duck_config.projector_brightness
+                )
+            else:
+                from mini_bdx_runtime.projector import Projector
+
+                self.projector = Projector()
         if self.duck_config.speaker:
             self.sounds = Sounds(
                 volume=1.0, sound_directory="../mini_bdx_runtime/assets/"
             )
         if self.duck_config.antennas:
             self.antennas = Antennas()
+
+    def head_control_active(self):
+        # head_control_mode lives on the XBoxController and only exists when
+        # external commands are enabled.
+        return self.commands and getattr(
+            self.xbox_controller, "head_control_mode", False
+        )
 
     def get_obs(self):
 
@@ -154,6 +187,13 @@ class RLWalk:
             return None
 
         cmds = self.last_commands
+        # In "decouple"/"both" head mode, hide the manual head pose command
+        # (indices 3:7 = neck_pitch, head_pitch, head_yaw, head_roll) from the
+        # policy so the legs don't react to the head stick. The head command is
+        # still applied directly to the head motors below in run().
+        if self.head_mode in ("decouple", "both") and self.head_control_active():
+            cmds = list(cmds)
+            cmds[3:] = [0.0] * len(cmds[3:])
 
         feet_contacts = self.feet_contacts.get()
 
@@ -263,24 +303,42 @@ class RLWalk:
                     time.sleep(0.1)
                     continue
 
+                # In "freeze"/"both" head mode, hold the legs still: pause the gait
+                # phase and (below) restore the leg targets to the pose captured when
+                # head mode was entered. Capture that snapshot on the rising edge.
+                freeze_active = (
+                    self.head_mode in ("freeze", "both") and self.head_control_active()
+                )
+                if freeze_active and not self.prev_freeze_active:
+                    self.frozen_leg_targets = self.motor_targets.copy()
+                self.prev_freeze_active = freeze_active
+
                 obs = self.get_obs()
                 if obs is None:
                     continue
 
-                self.imitation_i += 1 * (
-                    self.phase_frequency_factor + self.phase_frequency_factor_offset
-                )
-                self.imitation_i = self.imitation_i % self.PRM.nb_steps_in_period
-                self.imitation_phase = np.array(
-                    [
-                        np.cos(
-                            self.imitation_i / self.PRM.nb_steps_in_period * 2 * np.pi
-                        ),
-                        np.sin(
-                            self.imitation_i / self.PRM.nb_steps_in_period * 2 * np.pi
-                        ),
-                    ]
-                )
+                if not freeze_active:
+                    self.imitation_i += 1 * (
+                        self.phase_frequency_factor
+                        + self.phase_frequency_factor_offset
+                    )
+                    self.imitation_i = self.imitation_i % self.PRM.nb_steps_in_period
+                    self.imitation_phase = np.array(
+                        [
+                            np.cos(
+                                self.imitation_i
+                                / self.PRM.nb_steps_in_period
+                                * 2
+                                * np.pi
+                            ),
+                            np.sin(
+                                self.imitation_i
+                                / self.PRM.nb_steps_in_period
+                                * 2
+                                * np.pi
+                            ),
+                        ]
+                    )
 
                 if self.save_obs:
                     self.saved_obs.append(obs)
@@ -317,6 +375,13 @@ class RLWalk:
                         time.time() - start_t > 1
                     ):  # give time to the filter to stabilize
                         self.motor_targets = filtered_motor_targets
+
+                # Hold the legs at the captured pose while frozen; the head is still
+                # driven by the manual command in the override below.
+                if freeze_active and self.frozen_leg_targets is not None:
+                    self.motor_targets[self.leg_indices] = self.frozen_leg_targets[
+                        self.leg_indices
+                    ]
 
                 self.prev_motor_targets = self.motor_targets.copy()
 
@@ -398,6 +463,19 @@ if __name__ == "__main__":
         default=False,
         help="print each joint's present current (mA) to the console once per second",
     )
+    parser.add_argument(
+        "--head_mode",
+        type=str,
+        choices=["none", "freeze", "decouple", "both"],
+        default="none",
+        help=(
+            "How head-control mode (Y button) isolates the legs. "
+            "none: original behavior (legs still react). "
+            "freeze: pause the gait and hold the legs still. "
+            "decouple: hide the head command from the policy so the legs don't react. "
+            "both: freeze the gait and hide the head command."
+        ),
+    )
 
     args = parser.parse_args()
     pid = [args.p, args.i, args.d]
@@ -415,6 +493,7 @@ if __name__ == "__main__":
         replay_obs=args.replay_obs,
         cutoff_frequency=args.cutoff_frequency,
         print_current=args.print_current,
+        head_mode=args.head_mode,
     )
     print("Done instantiating RLWalk")
     rl_walk.run()

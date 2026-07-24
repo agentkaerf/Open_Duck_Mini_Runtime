@@ -9,10 +9,8 @@ from mini_bdx_runtime.duck_config import DuckConfig
 from mini_bdx_runtime.xbox_controller import XBoxController
 
 
-from mini_bdx_runtime.eyes import Eyes
 from mini_bdx_runtime.sounds import Sounds
 from mini_bdx_runtime.antennas import Antennas
-from mini_bdx_runtime.projector import Projector
 
 duck_config = DuckConfig()
 
@@ -23,9 +21,20 @@ if duck_config.speaker:
 if duck_config.antennas:
     antennas = Antennas()
 if duck_config.eyes:
+    if duck_config.eyes_serial:
+        from mini_bdx_runtime.eyes_serial import Eyes
+    else:
+        from mini_bdx_runtime.eyes import Eyes
     eyes = Eyes()
 if duck_config.projector:
-    projector = Projector()
+    if duck_config.projector_serial:
+        from mini_bdx_runtime.projector_serial import Projector
+
+        projector = Projector(brightness=duck_config.projector_brightness)
+    else:
+        from mini_bdx_runtime.projector import Projector
+
+        projector = Projector()
 
 hwi = HWI(duck_config)
 

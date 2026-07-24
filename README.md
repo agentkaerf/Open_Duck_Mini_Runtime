@@ -46,7 +46,15 @@ source /usr/share/virtualenvwrapper/virtualenvwrapper.sh
 
 `sudo raspi-config` -> `Interface Options` -> `I2C`
 
-TODO set 400KHz ?
+Set the I2C bus to 400 kHz
+
+```bash
+sudo nano /boot/firmware/config.txt
+# copy the following line to /boot/firmware/config.txt
+dtparam=i2c_arm_baudrate=400000
+```
+
+Reboot for settings to take effect
 
 ### Set the usbserial latency timer
 
@@ -171,12 +179,32 @@ Download the [latest policy checkpoint ](https://github.com/apirrone/Open_Duck_M
 
 
 
-```
-- The commands are : 
-- A to pause/unpause
-- X to turn on/off the projector
-- B to play a random sound
-- Y to turn on/off head control (very experimental, I don't recommend trying that, it can break your duck's head)
-- left and right triggers to control the left and right antennas
-- LB (new!) press and hold to increase the walking frequency, kind of a sprint mode 🙂
-```
+| Control | Action |
+|---|---|
+| Left stick | Linear velocity (forward/back, strafe) |
+| Right stick X | Angular (yaw) velocity |
+| A | Pause / unpause |
+| B | Play a random sound |
+| X | Toggle projector |
+| Y | Toggle head control mode (left stick controls head joints instead of body velocity. EXPERIMENTAL - can break your head!) |
+| LB (hold) | Sprint — increases gait frequency |
+| D-pad up / down | Increase / decrease base gait cadence |
+| Left trigger | Right antenna position |
+| Right trigger | Left antenna position |
+
+### Head control mode (`--head_mode`)
+
+When head control mode is toggled with the Y button, the manual head command can still affect the legs (the policy keeps stepping and reacts to the head command in its observation). The `--head_mode` option controls how the legs are isolated while head control is active:
+
+| Value | Gait | Head command in policy obs | Effect |
+|---|---|---|---|
+| `none` (default) | runs | fed in | Original behavior — the legs still react to the head stick |
+| `freeze` | paused, legs held | fed in | Robot stands still, only the head moves |
+| `decouple` | runs | hidden | Legs keep balancing but ignore the head stick |
+| `both` | paused, legs held | hidden | Strongest isolation: no leg reaction and no gait drift |
+
+Example:
+
+`python v2_rl_walk_mujoco.py --onnx_model_path <path_to>/BEST_WALK_ONNX_2.onnx --head_mode both`
+
+Note: `freeze` and `both` pause the policy's active leg balancing while head control is held, so the robot holds a static stance. If your duck tends to tip when standing still, prefer `decouple`.

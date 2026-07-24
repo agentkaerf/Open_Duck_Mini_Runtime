@@ -216,5 +216,12 @@ if __name__ == "__main__":
     controller = XBoxController(20)
 
     while True:
-        print(controller.get_last_command())
+        commands, buttons, left_trigger, right_trigger = controller.get_last_command()
+        lin_x, lin_y, ang = commands[0], commands[1], commands[2]
+
+        parts = [f"{name}={'ON ' if btn.is_pressed else 'off'}" for name, btn in vars(buttons).items()]
+        parts.append(f"LT={left_trigger:.2f} RT={right_trigger:.2f}")
+        parts.append(f"lx={lin_x:.2f} ly={lin_y:.2f} yaw={ang:.2f}")
+        print(" ".join(parts), end="\r")
+
         time.sleep(0.05)
