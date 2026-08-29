@@ -463,7 +463,12 @@ if __name__ == "__main__":
     parser.add_argument("-i", type=int, default=0)  # wired into the CLI but never applied - start() only sets kp/kd, not ki
     parser.add_argument("-d", type=int, default=0, help="servo kd (firmware D-register) for ALL joints, legs and head alike - default 0, i.e. no electronic damping anywhere; matches the training sim's actuator kv=0.0")
     parser.add_argument("-c", "--control_freq", type=int, default=50)
-    parser.add_argument("--pitch_bias", type=float, default=0, help="deg")
+    parser.add_argument("--pitch_bias", type=float, default=0,
+                        help="deg. CURRENTLY A NO-OP: this script uses the raw "
+                             "gyro/accel IMU backend, which accepts the value "
+                             "but never applies it (only the quaternion backend "
+                             "in imu.py does). Left in place so the flag does "
+                             "not silently disappear; see bno085_imu.py.")
     parser.add_argument(
         "--commands",
         action="store_true",

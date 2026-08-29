@@ -52,13 +52,24 @@ class Bno085Imu:
             print("BNO085 calibrates automatically in the background.")
             print("No manual calibration step required.")
 
+        # NOTE: `user_pitch_bias` is accepted for signature compatibility but is
+        # NOT APPLIED in this raw gyro/accel backend — it never has been, in
+        # this or the pre-refactor raw_imu.py, or the BNO055 version before it
+        # (where the line was present but commented out). Only imu.py, the
+        # quaternion backend behind imu_server.py, honours it. That means
+        # `v2_rl_walk_mujoco.py --pitch_bias` currently does nothing, since the
+        # walk runtime uses this backend. If a genuine standing bias survives a
+        # verified-correct axis remap, pitch correction has to be implemented
+        # here (rotate the remapped accel/gyro about body Y) before that flag
+        # means anything.
+        self.user_pitch_bias = user_pitch_bias
+
         # Accelerometer X bias correction, applied after the remap.
         # NOTE: tare_x() forces body-frame accel X to read ZERO, which is only
         # valid in a pose whose true X component is genuinely zero. In the
         # robot's standing home pose the true value is about -0.372 m/s^2 (a
         # real gravity component of the trunk's pitch), so taring there deletes
-        # signal and manufactures a ~2.2 deg phantom lean. Prefer correcting the
-        # measured DIFFERENCE from the expected vector via --pitch_bias.
+        # signal and manufactures a ~2.2 deg phantom lean.
         self.x_offset = 0
 
         self.last_imu_data = {"gyro": [0, 0, 0], "accelero": [0, 0, 0]}

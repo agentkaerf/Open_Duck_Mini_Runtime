@@ -169,6 +169,12 @@ It runs three checks, ordered by how few assumptions they make:
 3. **Standing bias** (pose-specific) — with the robot free-standing in its home
    pose on level ground, untouched, compares against the reference vector from
    simulation. Deviation on X reads as phantom pitch at roughly 5.8° per 1 m/s².
+   Fix the axis mapping first — a remap error masquerades as a bias, and often
+   accounts for all of it. Note there is currently **no working correction knob**
+   for a residual bias on this path: `--pitch_bias` is a no-op in the raw
+   gyro/accel backend the walk runtime uses (only the quaternion backend applies
+   it), and `tare_x()` must not be used because it zeroes a legitimate gravity
+   component of the home pose.
 
 To try a candidate mapping without editing the config first:
 

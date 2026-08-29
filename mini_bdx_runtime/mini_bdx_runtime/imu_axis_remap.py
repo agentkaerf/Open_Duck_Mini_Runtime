@@ -138,8 +138,14 @@ class AxisRemap:
 def resolve(chip: str, upside_down: bool, spec=None) -> AxisRemap:
     """Pick the remap: explicit spec wins, else the chip+mounting preset.
 
-    `spec` may be a raw spec string ('y,x,-z') or a preset name.
+    `spec` may be a raw spec string ('y,x,-z'), a preset name, or an already
+    built AxisRemap. Passing an AxisRemap returns it unchanged, so this is
+    idempotent — callers may resolve early (to report the mapping, or to fail
+    fast on a bad spec) and still hand the result to something that resolves
+    again, which is exactly what diagnose_imu.py -> make_imu does.
     """
+    if isinstance(spec, AxisRemap):
+        return spec
     if spec:
         return AxisRemap(PRESETS.get(str(spec).strip(), spec))
     key = f"{chip}_{'upside_down' if upside_down else 'normal'}"
