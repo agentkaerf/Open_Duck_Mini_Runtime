@@ -59,7 +59,20 @@ class DuckConfig:
                 exit(1)
 
         self.start_paused = self.json_config.get("start_paused", False)
+
+        # --- IMU -------------------------------------------------------------
+        # imu_chip:        which physical IMU is fitted ("bno085" | "bno055").
+        # imu_upside_down: whether the board is mounted inverted.
+        # imu_axis_remap:  OPTIONAL explicit chip->body axis mapping, e.g.
+        #                  "y,x,-z" (body_x=+chip_y, body_y=+chip_x,
+        #                  body_z=-chip_z), or a preset name from
+        #                  imu_axis_remap.PRESETS. Overrides the default
+        #                  implied by imu_chip + imu_upside_down.
+        # Verify any change with `scripts/diagnose_imu.py --test axes`: a wrong
+        # mapping inverts balance feedback and is invisible in simulation.
+        self.imu_chip = self.json_config.get("imu_chip", "bno085")
         self.imu_upside_down = self.json_config.get("imu_upside_down", False)
+        self.imu_axis_remap = self.json_config.get("imu_axis_remap", None)
         self.phase_frequency_factor_offset = self.json_config.get(
             "phase_frequency_factor_offset", 0.0
         )

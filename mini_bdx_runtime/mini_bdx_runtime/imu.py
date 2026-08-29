@@ -9,10 +9,26 @@ from threading import Thread
 import time
 from scipy.spatial.transform import Rotation as R
 
+from mini_bdx_runtime.imu_axis_remap import AxisRemap, resolve
+
 
 class Imu:
+    """BNO085 in quaternion (game rotation vector) mode.
+
+    Separate from the raw gyro/accel backends in bno085_imu.py: this one is used
+    by imu_server.py, not by the walk runtime. It shares their configurable axis
+    remap (see imu_axis_remap.py) so the two cannot drift apart — they describe
+    the same physical chip on the same physical mounting.
+    """
+
     def __init__(
-        self, sampling_freq, user_pitch_bias=0, calibrate=False, upside_down=True
+        self,
+        sampling_freq,
+        user_pitch_bias=0,
+        calibrate=False,
+        upside_down=True,
+        axis_remap=None,
+        chip="bno085",
     ):
         self.sampling_freq = sampling_freq
         self.user_pitch_bias = user_pitch_bias
@@ -32,17 +48,17 @@ class Imu:
 
         self.pitch_bias = self.nominal_pitch_bias + self.user_pitch_bias
 
-        # Rotation that replicates the BNO055 axis_remap in software.
-        # upside_down=True:  out = [[-y, -x, -z]] -> matrix [[0,-1,0],[-1,0,0],[0,0,-1]]
-        # upside_down=False: out = [[-y,  x,  z]] -> matrix [[0,-1,0],[ 1,0,0],[0,0, 1]]
-        if upside_down:
-            self._rot_remap = R.from_matrix(
-                np.array([[0, -1, 0], [-1, 0, 0], [0, 0, -1]], dtype=float)
-            )
-        else:
-            self._rot_remap = R.from_matrix(
-                np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]], dtype=float)
-            )
+        # Chip -> body axis mapping, from configuration rather than hardcoded.
+        # AxisRemap guarantees a proper rotation (det=+1), which R.from_matrix
+        # requires anyway; a reflection would raise there with a far less
+        # helpful message.
+        self.remap = (
+            axis_remap
+            if isinstance(axis_remap, AxisRemap)
+            else resolve(chip, upside_down, axis_remap)
+        )
+        print(f"[IMU] {chip} (quaternion mode), axis remap {self.remap}")
+        self._rot_remap = R.from_matrix(self.remap.matrix)
 
         self.last_imu_data = [0, 0, 0, 0]
         self.imu_queue = Queue(maxsize=1)

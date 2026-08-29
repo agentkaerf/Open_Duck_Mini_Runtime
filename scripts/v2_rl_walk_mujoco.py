@@ -5,7 +5,7 @@ import numpy as np
 from mini_bdx_runtime.rustypot_position_hwi import HWI
 from mini_bdx_runtime.onnx_infer import OnnxInfer
 
-from mini_bdx_runtime.raw_imu import Imu
+from mini_bdx_runtime.raw_imu import from_config as imu_from_config
 from mini_bdx_runtime.poly_reference_motion import PolyReferenceMotion
 from mini_bdx_runtime.xbox_controller import XBoxController
 from mini_bdx_runtime.feet_contacts import FeetContacts
@@ -87,10 +87,11 @@ class RLWalk:
 
         self.start()
 
-        self.imu = Imu(
+        # Chip, mounting and axis remap all come from duck_config.json.
+        self.imu = imu_from_config(
+            self.duck_config,
             sampling_freq=int(self.control_freq),
             user_pitch_bias=self.pitch_bias,
-            upside_down=self.duck_config.imu_upside_down,
         )
 
         self.feet_contacts = FeetContacts()
@@ -219,7 +220,21 @@ class RLWalk:
         kps = [self.pid[0]] * 14
         kds = [self.pid[2]] * 14
 
-        # lower head kps
+        # Lower head kps (joints 5:9 = neck_pitch, head_pitch, head_yaw,
+        # head_roll) relative to the legs' kp=30. Undocumented at origin
+        # (commit 6e1881b, 2025-04-09, "lower head kps" - no rationale given;
+        # likely dev-time tuning, not a deliberate design choice). Note this
+        # is a servo firmware P-register (~0-254, servo's own internal torque
+        # mapping), NOT the same unit space as the training sim's MuJoCo
+        # position-actuator kp (N*m/rad) - no validated conversion exists.
+        # The training sim (Open_Duck_Playground) previously used a single
+        # uniform kp for every joint, training the policy against a head
+        # stiffer than this one; it now applies this head:leg kp ratio
+        # (8/30 = 0.267) to its own gain instead, so sim and deploy are at
+        # least consistently *softer-headed-than-legs* by the same ratio,
+        # even though the absolute numbers remain incomparable. See
+        # Open_Duck_Playground/playground/open_duck_mini_v2/xmls/
+        # joints_properties.xml (class "sts3215_head").
         kps[5:9] = [8, 8, 8, 8]
 
         self.hwi.set_kps(kps)
@@ -444,9 +459,9 @@ if __name__ == "__main__":
         default=f"{HOME_DIR}/duck_config.json",
     )
     parser.add_argument("-a", "--action_scale", type=float, default=0.25)
-    parser.add_argument("-p", type=int, default=30)
-    parser.add_argument("-i", type=int, default=0)
-    parser.add_argument("-d", type=int, default=0)
+    parser.add_argument("-p", type=int, default=30, help="leg servo kp (firmware P-register, ~0-254); head is separately softened, see start()")
+    parser.add_argument("-i", type=int, default=0)  # wired into the CLI but never applied - start() only sets kp/kd, not ki
+    parser.add_argument("-d", type=int, default=0, help="servo kd (firmware D-register) for ALL joints, legs and head alike - default 0, i.e. no electronic damping anywhere; matches the training sim's actuator kv=0.0")
     parser.add_argument("-c", "--control_freq", type=int, default=50)
     parser.add_argument("--pitch_bias", type=float, default=0, help="deg")
     parser.add_argument(

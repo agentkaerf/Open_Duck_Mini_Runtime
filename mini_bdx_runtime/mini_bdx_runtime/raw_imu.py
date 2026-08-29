@@ -1,132 +1,91 @@
-import board
-import busio
-import numpy as np
-from adafruit_bno08x import BNO_REPORT_ACCELEROMETER, BNO_REPORT_GYROSCOPE
-from adafruit_bno08x.i2c import BNO08X_I2C
+"""IMU factory — selects the backend from configuration.
 
-from queue import Queue
-from threading import Thread
-import time
+The concrete implementations live in bno085_imu.py and bno055_imu.py; the axis
+mapping lives in imu_axis_remap.py. This module only picks one, and keeps the
+historical `from mini_bdx_runtime.raw_imu import Imu` import path working.
+
+Configure in duck_config.json:
+
+    "imu_chip":        "bno085" | "bno055"     (default: bno085)
+    "imu_upside_down": true | false            (default: false)
+    "imu_axis_remap":  "y,x,-z"                (optional; overrides the
+                                                chip+mounting preset, and also
+                                                accepts a preset name)
+
+The chip modules are imported lazily so that selecting one chip does not
+require the other's driver to be installed.
+"""
+
+from mini_bdx_runtime.imu_axis_remap import PRESETS, AxisRemap, resolve  # noqa: F401
+
+SUPPORTED_CHIPS = ("bno085", "bno055")
 
 
-class Imu:
-    def __init__(
-        self, sampling_freq, user_pitch_bias=0, calibrate=False, upside_down=True
-    ):
-        self.sampling_freq = sampling_freq
-        self.upside_down = upside_down
+def make_imu(
+    sampling_freq,
+    user_pitch_bias=0,
+    calibrate=False,
+    upside_down=True,
+    chip="bno085",
+    axis_remap=None,
+):
+    """Build the configured IMU backend."""
+    chip = (chip or "bno085").strip().lower()
+    if chip not in SUPPORTED_CHIPS:
+        raise ValueError(
+            f"Unknown imu_chip '{chip}'. Supported: {list(SUPPORTED_CHIPS)}"
+        )
 
-        self.i2c = busio.I2C(board.SCL, board.SDA, frequency=400000)
-        self._init_imu()
+    # Resolve (and validate) the remap here so a bad spec fails immediately with
+    # a clear message, before any I2C work.
+    remap = resolve(chip, upside_down, axis_remap)
 
-        if calibrate:
-            print("BNO085 calibrates automatically in the background.")
-            print("No manual calibration step required.")
+    if chip == "bno085":
+        from mini_bdx_runtime.bno085_imu import Bno085Imu as Backend
+    else:
+        from mini_bdx_runtime.bno055_imu import Bno055Imu as Backend
 
-        self.x_offset = 0
+    return Backend(
+        sampling_freq,
+        user_pitch_bias=user_pitch_bias,
+        calibrate=calibrate,
+        upside_down=upside_down,
+        axis_remap=remap,
+    )
 
-        self.last_imu_data = {
-            "gyro": [0, 0, 0],
-            "accelero": [0, 0, 0],
-        }
-        self.imu_queue = Queue(maxsize=1)
-        Thread(target=self.imu_worker, daemon=True).start()
 
-    def _init_imu(self, retries=10):
-        """Initialize the BNO085 and enable features.
+def from_config(duck_config, sampling_freq, user_pitch_bias=0, calibrate=False):
+    """Build the IMU straight from a DuckConfig."""
+    return make_imu(
+        sampling_freq,
+        user_pitch_bias=user_pitch_bias,
+        calibrate=calibrate,
+        upside_down=duck_config.imu_upside_down,
+        chip=duck_config.imu_chip,
+        axis_remap=duck_config.imu_axis_remap,
+    )
 
-        The BNO08x is flaky over I2C (clock-stretching issues on the Pi), so
-        enabling features can fail intermittently. Retry a full re-init until
-        both features enable cleanly.
-        """
-        last_err = None
-        for attempt in range(retries):
-            try:
-                self.imu = BNO08X_I2C(self.i2c)
-                # Give the chip a moment to finish booting after (re)init.
-                time.sleep(0.5)
-                self.imu.enable_feature(BNO_REPORT_ACCELEROMETER)
-                self.imu.enable_feature(BNO_REPORT_GYROSCOPE)
-                return
-            except Exception as e:
-                last_err = e
-                print(f"[IMU]: init attempt {attempt + 1}/{retries} failed: {e}")
-                time.sleep(0.5)
 
-        raise RuntimeError(
-            f"Failed to initialize BNO085 after {retries} attempts"
-        ) from last_err
-
-    def _remap_vector(self, v):
-        # Replicates BNO055 axis_remap: swap X/Y then negate based on orientation
-        x, y, z = v
-        if self.upside_down:
-            return np.array([-y, -x, -z])
-        else:
-            return np.array([-y, x, z])
-
-    def tare_x(self):
-        print("Taring x ...")
-        x_values = []
-        num_values = 100
-        ok = False
-        while not ok:
-            raw = self.imu.acceleration
-            if raw is None:
-                time.sleep(0.01)
-                continue
-            x_values.append(self._remap_vector(np.array(raw))[0])
-            x_values = x_values[-num_values:]
-
-            if len(x_values) == num_values:
-                mean = np.mean(x_values)
-                std = np.std(x_values)
-                if std < 0.05:
-                    ok = True
-                    self.x_offset = mean
-                    print("Tare x done")
-                else:
-                    print(std)
-
-            time.sleep(0.01)
-
-    def imu_worker(self):
-        while True:
-            s = time.time()
-            try:
-                raw_gyro = self.imu.gyro
-                raw_accelero = self.imu.acceleration
-            except Exception as e:
-                print("[IMU]:", e)
-                continue
-
-            if raw_gyro is None or raw_accelero is None:
-                continue
-
-            gyro = self._remap_vector(np.array(raw_gyro))
-            accelero = self._remap_vector(np.array(raw_accelero))
-            accelero[0] -= self.x_offset
-
-            data = {
-                "gyro": gyro,
-                "accelero": accelero,
-            }
-
-            self.imu_queue.put(data)
-            took = time.time() - s
-            time.sleep(max(0, 1 / self.sampling_freq - took))
-
-    def get_data(self):
-        try:
-            self.last_imu_data = self.imu_queue.get(False)  # non blocking
-        except Exception:
-            pass
-
-        return self.last_imu_data
+# Backwards-compatible entry point: `Imu(...)` used to be the BNO085 class.
+# Callers that predate the chip option keep working and get the default chip.
+Imu = make_imu
 
 
 if __name__ == "__main__":
-    imu = Imu(50, upside_down=False)
+    import argparse
+    import time
+
+    import numpy as np
+
+    p = argparse.ArgumentParser(description="Print live IMU readings.")
+    p.add_argument("--chip", default="bno085", choices=SUPPORTED_CHIPS)
+    p.add_argument("--upside-down", dest="upside_down", action="store_true", default=False)
+    p.add_argument("--axis-remap", default=None, help="e.g. 'y,x,-z' or a preset name")
+    args = p.parse_args()
+
+    imu = make_imu(
+        50, upside_down=args.upside_down, chip=args.chip, axis_remap=args.axis_remap
+    )
     while True:
         data = imu.get_data()
         print("gyro", np.around(data["gyro"], 3))
