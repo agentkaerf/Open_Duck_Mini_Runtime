@@ -142,6 +142,85 @@ You can also run `python3 scripts/imu_server.py` on the robot and `python3 scrip
 
 > To find the ip address of the robot, run `ifconfig` on the robot
 
+### Verify the IMU orientation (do this before trusting any policy)
+
+**A wrong IMU axis mapping is invisible in simulation and will make the robot
+unstable on hardware.** The simulated IMU is perfectly aligned, so every sim
+metric can look fine while the real robot fights itself. If the mapping has a
+sign error on X or Y, balance corrections are applied in the *wrong direction* —
+positive feedback — which looks like the robot rocking with growing amplitude
+until it tips, or falling in whichever direction it is walking.
+
+Run the diagnostic battery:
+
+```bash
+python3 scripts/diagnose_imu.py               # all tests
+python3 scripts/diagnose_imu.py --test axes   # just the 6-position axis test
+```
+
+It runs three checks, ordered by how few assumptions they make:
+
+1. **Invariants** (pose-independent) — `|accel|` must be ~9.81 m/s² and gyro ~0
+   in *any* stationary orientation. Valid even hand-held, so it does not depend
+   on getting the robot into a particular pose.
+2. **Axis / remap** (6-position test) — hold the robot with each body axis up
+   and down in turn; confirms gravity lands on the expected axis with the
+   expected sign. This is what validates your `imu_axis_remap`.
+3. **Standing bias** (pose-specific) — with the robot free-standing in its home
+   pose on level ground, untouched, compares against the reference vector from
+   simulation. Deviation on X reads as phantom pitch at roughly 5.8° per 1 m/s².
+
+To try a candidate mapping without editing the config first:
+
+```bash
+python3 scripts/diagnose_imu.py --test axes --axis-remap "y,x,-z"
+```
+
+> The BNO085 self-calibrates continuously (the BNO055 used stored calibration
+> instead), so its bias is **not** deterministic across sessions. Use
+> `--log imu_runs.jsonl` and repeat across several power cycles before
+> concluding anything about a systematic offset.
+
+### IMU configuration
+
+Three keys in `duck_config.json` describe the IMU:
+
+| key | values | meaning |
+|---|---|---|
+| `imu_chip` | `"bno085"` (default), `"bno055"` | Which IMU is physically fitted. Each has its own backend module. |
+| `imu_upside_down` | `true` / `false` (default `false`) | Whether the board is mounted inverted. |
+| `imu_axis_remap` | `null` (default), a spec, or a preset name | Optional explicit chip→body axis mapping. Overrides the default implied by `imu_chip` + `imu_upside_down`. |
+
+Leave `imu_axis_remap` as `null` unless the 6-position test fails — the chip and
+mounting already select a sensible default.
+
+**Spec format.** Three comma-separated terms giving the source of body X, Y, Z
+(body frame is x=forward, y=left, z=up):
+
+```
+"y,x,-z"   ->   body_x = +chip_y,   body_y = +chip_x,   body_z = -chip_z
+```
+
+Any permutation of `x`/`y`/`z` with independent signs is accepted, provided it
+is a **proper rotation**. A mapping with determinant −1 (a mirror) is rejected
+at startup: it would transform the accelerometer correctly while silently
+inverting the gyro, since angular velocity is an axial vector and acceleration
+is a polar one. That failure is nearly impossible to spot by eye.
+
+Preset names accepted in place of a spec:
+
+| preset | spec | notes |
+|---|---|---|
+| `bno085_upside_down` | `y,x,-z` | Verified on hardware (6/6 positions) |
+| `bno085_normal` | `-y,x,z` | Inherited, **not** hardware-verified — run the axis test |
+| `bno055_upside_down` | `-y,-x,-z` | Matches the original BNO055 hardware `axis_remap` |
+| `bno055_normal` | `-y,x,z` | Matches the original BNO055 hardware `axis_remap` |
+| `identity` | `x,y,z` | No remap; chip frame == body frame |
+
+On the BNO055 the same spec is applied by the chip itself via its `axis_remap`
+register; on the BNO085 it is applied in software. Either way the meaning is
+identical, so a mapping verified on one is expressed the same way on the other.
+
 ## Test motors
 
 This will allow you to verify all your motors are connected and configured.
@@ -156,7 +235,7 @@ Copy `example_config.json` in the home directory of your duck and rename it `duc
 
 `cp example_config.json ~/duck_config.json`
 
-In this file, you can configure some stuff, like registering if you installed the expression features, installed the imu upside down or and other stuff. You also write the joints offsets of your duck here
+In this file, you can configure some stuff, like registering if you installed the expression features, which IMU you fitted and how it is mounted (`imu_chip`, `imu_upside_down`, `imu_axis_remap` — see [IMU configuration](#imu-configuration)) and other stuff. You also write the joints offsets of your duck here
 
 ## Find the joints offsets
 

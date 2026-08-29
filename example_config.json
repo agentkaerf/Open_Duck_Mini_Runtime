@@ -1,6 +1,8 @@
 {
     "start_paused": false,
+    "imu_chip": "bno085",
     "imu_upside_down": false,
+    "imu_axis_remap": null,
     "phase_frequency_factor_offset": 0.0,
     "expression_features": {
         "eyes": {
